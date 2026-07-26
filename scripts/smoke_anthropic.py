@@ -23,7 +23,7 @@ def check(label: str, *, fast: bool) -> bool:
         text = reply.content if isinstance(reply.content, str) else str(reply.content)
         print(f"OK -> {text.strip()!r}")
         return True
-    except Exception as exc:  # noqa: BLE001 - smoke test wants the raw reason
+    except Exception as exc:
         print(f"FAILED -> {type(exc).__name__}: {exc}")
         return False
 
