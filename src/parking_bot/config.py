@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     # --- LLM (Anthropic) ---
     anthropic_api_key: str = ""
-    llm_model: str = "claude-sonnet-5"
+    llm_model: str = "claude-sonnet-4-6"
     # Cheaper model for high-volume internal steps (routing, extraction, guardrails)
     llm_model_fast: str = "claude-haiku-4-5-20251001"
     llm_temperature: float = 0.0
