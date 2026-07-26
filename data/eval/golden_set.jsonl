@@ -1,3 +1,3 @@
-{"question": "Скільки коштує паркування на добу?", "relevant_doc_ids": ["pricing.md#daily"], "expected_answer_contains": ["грн"]}
-{"question": "О котрій відкривається паркінг у неділю?", "relevant_doc_ids": ["hours.md#weekend"], "expected_answer_contains": ["неділ"]}
-{"question": "Як доїхати до паркінгу від вокзалу?", "relevant_doc_ids": ["location.md#directions"], "expected_answer_contains": []}
+{"question": "How much does parking cost per day?", "relevant_doc_ids": ["pricing.md#daily"], "expected_answer_contains": ["hrn"]}
+{"question": "What time does the parking lot open on Sunday?", "relevant_doc_ids": ["hours.md#weekend"], "expected_answer_contains": ["sunday"]}
+{"question": "How do I get to the parking lot from the station?", "relevant_doc_ids": ["location.md#directions"], "expected_answer_contains": []}

@@ -11,8 +11,8 @@ def test_settings_read_environment_overrides(settings: Settings) -> None:
 def test_fake_embeddings_are_deterministic_and_correctly_sized() -> None:
     """Same text -> same vector, so retrieval tests are reproducible."""
     emb = FakeEmbeddings(dim=768)
-    first = emb.embed_query("Скільки коштує паркування на добу?")
-    second = emb.embed_query("Скільки коштує паркування на добу?")
+    first = emb.embed_query("How much does parking cost per day?")
+    second = emb.embed_query("How much does parking cost per day?")
 
     assert first == second
     assert len(first) == 768
