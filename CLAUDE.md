@@ -1,0 +1,113 @@
+# CLAUDE.md
+
+Guidance for AI agents working in this repository. Read this before making changes.
+
+## What this project is
+
+A RAG chatbot for parking-space information and reservation, with a
+human-in-the-loop confirmation step. University course project, delivered in
+stages. Each stage is submitted as a git tag `stage-N` (stage-0, stage-1, …),
+so the reviewer sees the exact state being graded.
+
+## Locked decisions — do not revisit without being asked
+
+These were deliberated and settled. Do not propose alternatives unless the user
+explicitly reopens the question.
+
+- **LLM: `claude-sonnet-4-6` only.** Sonnet 5 was rejected because it removes
+  sampling parameters (setting `temperature` returns HTTP 400), and this RAG
+  pipeline relies on `temperature=0` for deterministic answers. Do not suggest
+  Sonnet 5 or other providers. (ADR-004)
+- **Fast model: `claude-haiku-4-5`** for cheap internal steps (routing,
+  extraction, guardrails). This is a separate axis from the generation model,
+  not a competitor to Sonnet 4.6.
+- **Embeddings: local `sentence-transformers` (`intfloat/multilingual-e5-base`).**
+  Anthropic has no embeddings API. Local models keep CI key-free and let the
+  stage-1 evaluation compare models for free. Do not suggest OpenAI/Anthropic
+  embeddings. (ADR-001)
+- **Vector store: Milvus.** Milvus Lite (a local `.db` file) in development and
+  CI; Milvus standalone via `docker/compose.yml` for the demo. Same
+  `langchain-milvus` library for both — switched by the `MILVUS_URI` env var.
+  (ADR-002)
+- **Dynamic data (availability, hours, prices, reservations): PostgreSQL.**
+  Static data (general info, location, booking process) goes in the vector
+  store. Keep this split.
+- **Guardrails: Microsoft Presidio** for PII detection.
+- **Config: everything via environment** (`pydantic-settings`, `.env`). No
+  hardcoded provider choices — this is what makes the evaluation report cheap.
+  (ADR-003)
+- **Product language: English.** Bot conversation, static parking documents,
+  and the golden set are all English. This simplifies Presidio (built-in
+  English recognizers instead of custom Ukrainian ones). Code, comments,
+  docstrings, and commits are English too. (ADR-005)
+
+## Environment
+
+- Windows + WSL2. The project lives in the WSL filesystem (`~/dev/parking-bot`),
+  **never** under `/mnt/c` — mounted-drive I/O is slow and breaks file watchers.
+- Python 3.12, managed by `uv`. Use `uv run …` and `uv sync`, not bare `pip`.
+- `uv.lock` is committed and authoritative; regenerate it deliberately, not by
+  accident.
+
+## Common commands
+
+```bash
+make install    # uv sync --extra dev
+make test       # pytest, excluding the `integration` marker
+make test-all   # all tests
+make lint       # ruff check + format --check
+make fmt        # ruff format + check --fix   (run before committing)
+make up / down  # docker compose: Milvus standalone + Postgres + Attu
+```
+
+## Conventions
+
+- **Commits: Conventional Commits.** `feat:`, `fix:`, `chore:`, `docs:`,
+  `style:`, `refactor:`, `test:`. Imperative subject; body explains *why*.
+  Keep commits atomic — one logical change each; never mix a formatting sweep
+  with a behavior change.
+- **Tests must run offline.** `tests/conftest.py` forces `EMBEDDING_PROVIDER=fake`
+  and an in-memory store so unit tests need no API key and no running services.
+  Tests that require real Milvus/Postgres/API access get the `integration`
+  marker and are excluded from CI. Preserve this — never write a unit test that
+  needs a live key.
+- **Smoke scripts vs tests.** `scripts/smoke_*.py` are manual checks that hit
+  live services (cost tokens, need keys). They are not pytest tests and must
+  not run in CI.
+- Run `make fmt` and `make test` before every commit. CI runs the same ruff +
+  pytest steps, so green locally means green in CI.
+
+## Known traps
+
+- **`multilingual-e5` requires `query:` / `passage:` prefixes** when encoding.
+  Queries get `query: `, documents get `passage: `. Omitting them noticeably
+  degrades retrieval. If the embedding model is ever switched to a non-e5 model
+  (e.g. `bge-base-en`), remove these prefixes — they are e5-specific.
+- **`temperature` and Sonnet 4.6:** `temperature=0` works and is wanted. Do not
+  add sampling parameters beyond what config exposes.
+- Files copied from Windows into WSL can carry `:Zone.Identifier` sidecar files
+  and `777` permissions. Prefer creating/editing files directly in WSL.
+
+## Structure
+
+```
+src/parking_bot/
+├── config.py       typed config; every provider swappable via env
+├── ingestion/      document loading and chunking
+├── retrieval/      vector store, retriever
+├── llm/            chat + embeddings factories (+ fake backends for tests)
+├── guardrails/     PII filtering
+├── graph/          LangGraph state (stage 2+)
+└── api/            interface
+data/
+├── static/         documents for the vector store
+└── eval/           golden set for Recall@K / Precision
+scripts/            manual smoke checks (not CI)
+```
+
+## Documentation
+
+- `README.md` in the repo is the source of truth for setup/usage.
+- A Notion page ("Parking Reservation Chatbot") holds the decision journal:
+  stack rationale, ADR-001..005, stage plan, and a task tracker. When a
+  significant architectural decision is made, it belongs there as a new ADR.
