@@ -44,9 +44,12 @@ def build_embeddings(settings: Settings | None = None) -> Embeddings:
     if settings.embedding_provider == "local":
         from langchain_huggingface import HuggingFaceEmbeddings
 
+        # multilingual-e5 requires "query: " / "passage: " prefixes on encoding
+        # input, applied here via sentence-transformers' `prompt` encode kwarg.
         return HuggingFaceEmbeddings(
             model_name=settings.embedding_model,
-            encode_kwargs={"normalize_embeddings": True},
+            encode_kwargs={"normalize_embeddings": True, "prompt": "passage: "},
+            query_encode_kwargs={"normalize_embeddings": True, "prompt": "query: "},
         )
 
     if settings.embedding_provider == "voyage":
