@@ -27,8 +27,12 @@ explicitly reopens the question.
   embeddings. (ADR-001)
 - **Vector store: Milvus.** Milvus Lite (a local `.db` file) in development and
   CI; Milvus standalone via `docker/compose.yml` for the demo. Same
-  `langchain-milvus` library for both — switched by the `MILVUS_URI` env var.
-  (ADR-002)
+  `langchain-milvus` library for both. Switched via config: `MILVUS_LITE_PATH`
+  holds the local file (default), and setting `MILVUS_URI` (a real
+  `http://host:port`) overrides it for standalone. These are deliberately two
+  separate env vars, not one — `pymilvus` itself reads `MILVUS_URI` for its own
+  global default connector at import time and requires a network address, so a
+  local path can never live under that name. (ADR-002)
 - **Dynamic data (availability, hours, prices, reservations): PostgreSQL.**
   Static data (general info, location, booking process) goes in the vector
   store. Keep this split.
@@ -85,6 +89,12 @@ make up / down  # docker compose: Milvus standalone + Postgres + Attu
   (e.g. `bge-base-en`), remove these prefixes — they are e5-specific.
 - **`temperature` and Sonnet 4.6:** `temperature=0` works and is wanted. Do not
   add sampling parameters beyond what config exposes.
+- **Never put a local path in an env var literally named `MILVUS_URI`.**
+  `pymilvus` calls `load_dotenv()` itself and reads `MILVUS_URI` for its own
+  global default connector at import time — before any of our code runs — and
+  requires a network address there. A local Milvus Lite path in that exact env
+  var crashes `import pymilvus` outright. Local dev/CI path goes in
+  `MILVUS_LITE_PATH` instead; see ADR-002.
 - Files copied from Windows into WSL can carry `:Zone.Identifier` sidecar files
   and `777` permissions. Prefer creating/editing files directly in WSL.
 

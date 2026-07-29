@@ -37,10 +37,21 @@ class Settings(BaseSettings):
     embedding_dim: int = 768
 
     # --- Vector store (Milvus) ---
-    # Local file path  -> Milvus Lite, zero infrastructure (development, CI)
-    # http://host:19530 -> Milvus standalone from docker/compose.yml (demo)
-    milvus_uri: str = "./data/milvus_lite.db"
+    # Local Milvus Lite file, zero infrastructure (development, CI). Deliberately
+    # NOT named MILVUS_URI: pymilvus's own global default connector reads that
+    # exact env var at import time (via its own load_dotenv() call) and requires
+    # an http(s) address, so a local path there crashes `import pymilvus` before
+    # our code runs.
+    milvus_lite_path: str = "./data/milvus_lite.db"
+    # Set (to e.g. http://localhost:19530) to switch to Milvus standalone from
+    # docker/compose.yml for the demo. Must be a real network URI when set.
+    milvus_uri: str = ""
     milvus_collection: str = "parking_static"
+
+    @property
+    def milvus_connection_uri(self) -> str:
+        """Effective Milvus connection target: standalone override or Lite path."""
+        return self.milvus_uri or self.milvus_lite_path
 
     # --- Dynamic data (SQL) ---
     database_url: str = "postgresql+psycopg://parking:parking@localhost:5432/parking"
