@@ -1,3 +1,28 @@
-{"question": "How much does parking cost per day?", "relevant_doc_ids": ["pricing.md#daily"], "expected_answer_contains": ["hrn"]}
-{"question": "What time does the parking lot open on Sunday?", "relevant_doc_ids": ["hours.md#weekend"], "expected_answer_contains": ["sunday"]}
-{"question": "How do I get to the parking lot from the station?", "relevant_doc_ids": ["location.md#directions"], "expected_answer_contains": []}
+{"question": "Is this garage self-service or is there an attendant on-site?", "relevant_doc_ids": ["general.md#overview"], "expected_answer_contains": ["self-service"]}
+{"question": "Who do I contact if the chatbot can't resolve my issue?", "relevant_doc_ids": ["general.md#contact"], "expected_answer_contains": []}
+{"question": "Can I pay with cash at the garage?", "relevant_doc_ids": ["general.md#payment-methods"], "expected_answer_contains": ["cash"]}
+{"question": "What payment methods are accepted for a reservation?", "relevant_doc_ids": ["general.md#payment-methods"], "expected_answer_contains": ["credit"]}
+{"question": "Can motorcycles park at Central Parking Garage?", "relevant_doc_ids": ["general.md#vehicle-types"], "expected_answer_contains": ["motorcycle"]}
+{"question": "Is there space to park a bicycle?", "relevant_doc_ids": ["general.md#vehicle-types"], "expected_answer_contains": ["bicycle"]}
+{"question": "Do you have accessible parking spaces for drivers with a disability permit?", "relevant_doc_ids": ["general.md#accessibility"], "expected_answer_contains": ["level 1"]}
+{"question": "What is the exact address of the parking garage?", "relevant_doc_ids": ["location.md#address"], "expected_answer_contains": ["station square"]}
+{"question": "How do I drive to the garage from the ring road?", "relevant_doc_ids": ["location.md#directions-car"], "expected_answer_contains": ["ring road"]}
+{"question": "Which bus lines stop near the garage?", "relevant_doc_ids": ["location.md#directions-transit"], "expected_answer_contains": ["bus"]}
+{"question": "How far is the garage from Central Station on foot?", "relevant_doc_ids": ["location.md#directions-transit"], "expected_answer_contains": ["3-minute"]}
+{"question": "Which gate should I use to drive into the garage?", "relevant_doc_ids": ["location.md#entrances"], "expected_answer_contains": ["north gate"]}
+{"question": "What street is the exit gate on?", "relevant_doc_ids": ["location.md#entrances"], "expected_answer_contains": ["miller street"]}
+{"question": "What landmarks are near the garage?", "relevant_doc_ids": ["location.md#landmarks"], "expected_answer_contains": ["shopping mall"]}
+{"question": "How do I make a reservation through the chatbot?", "relevant_doc_ids": ["booking.md#how-to-reserve"], "expected_answer_contains": []}
+{"question": "Does the chatbot book a spot automatically, or does it ask me to confirm first?", "relevant_doc_ids": ["booking.md#confirmation"], "expected_answer_contains": ["confirm"]}
+{"question": "Can I change the date or time of a reservation I already made?", "relevant_doc_ids": ["booking.md#modify"], "expected_answer_contains": []}
+{"question": "How do I cancel an existing reservation?", "relevant_doc_ids": ["booking.md#cancel"], "expected_answer_contains": ["cancel"]}
+{"question": "Is there a cancellation fee if I cancel close to my arrival time?", "relevant_doc_ids": ["booking.md#cancel"], "expected_answer_contains": ["fee"]}
+{"question": "What happens if I don't show up for my reserved spot?", "relevant_doc_ids": ["booking.md#no-show"], "expected_answer_contains": ["30 minutes"]}
+{"question": "What is the maximum number of days I can reserve a spot for?", "relevant_doc_ids": ["rules.md#time-limits"], "expected_answer_contains": ["14"]}
+{"question": "Am I allowed to bring a trailer into the garage?", "relevant_doc_ids": ["rules.md#prohibited"], "expected_answer_contains": ["trailer"]}
+{"question": "Can I sleep in my car overnight in the garage?", "relevant_doc_ids": ["rules.md#prohibited"], "expected_answer_contains": []}
+{"question": "Can my car get towed if I overstay my reserved time window?", "relevant_doc_ids": ["rules.md#towing"], "expected_answer_contains": ["tow"]}
+{"question": "Can a visitor park here without making their own reservation?", "relevant_doc_ids": ["rules.md#guests"], "expected_answer_contains": []}
+{"question": "Is the garage responsible if my car gets damaged while parked?", "relevant_doc_ids": ["rules.md#liability"], "expected_answer_contains": ["not liable"]}
+{"question": "I'm arriving by train — where is the garage and how do I book a spot before I get there?", "relevant_doc_ids": ["location.md#directions-transit", "booking.md#how-to-reserve"], "expected_answer_contains": []}
+{"question": "I need to keep my car parked for two weeks — is that allowed, and how do I book it?", "relevant_doc_ids": ["rules.md#time-limits", "booking.md#how-to-reserve"], "expected_answer_contains": ["14"]}
