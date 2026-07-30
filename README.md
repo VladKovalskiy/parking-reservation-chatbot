@@ -42,7 +42,7 @@ Docker потрібен лише для демо-режиму з повноці�
 
 ```bash
 make up      # Milvus standalone + Postgres + Attu UI на localhost:8000
-# і в .env: MILVUS_URI=http://localhost:19530
+# і в .env: MILVUS_URI=http://localhost:19530 (замість MILVUS_LITE_PATH)
 ```
 
 ## Структура
@@ -59,6 +59,8 @@ src/parking_bot/
 data/
 ├── static/         # документи для векторної БД
 └── eval/           # golden set для Recall@K / Precision
+docs/
+└── sql-schema.md   # дизайн PostgreSQL-схеми для динамічних даних
 ```
 
 ## Тестування
@@ -79,6 +81,15 @@ make test-all   # усі
 Наповнюється паралельно з написанням документів у `data/static/`. Метрики
 (Recall@K, Precision@K, latency) рахуються скриптом `make eval` — з'явиться на
 stage 1.
+
+## Dynamic data (PostgreSQL)
+
+Місця, тарифи, години роботи і бронювання — це не задача для RAG (див.
+[Стек](#стек-і-чому-саме-він)). Дизайн схеми, межа статичне/динамічне і
+обґрунтування ключових рішень (double-booking guard, price snapshot,
+availability як запит, а не таблиця) — у
+[`docs/sql-schema.md`](docs/sql-schema.md). Реалізація (моделі, міграції)
+з'явиться на пізнішому етапі stage 1.
 
 ## CI
 
