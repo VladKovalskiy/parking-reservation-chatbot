@@ -12,6 +12,21 @@ course project, delivered in 4 stages.
 | 3 | — | ⬜ |
 | 4 | — | ⬜ |
 
+Each stage is submitted as a git tag `stage-N` (`stage-0`, `stage-1`, …),
+tagging the exact commit graded for that stage. The course submission form
+gets a link to that tag, e.g.:
+
+```
+https://github.com/VladKovalskiy/parking-reservation-chatbot/tree/stage-1
+```
+
+Tag a stage once it's done and pushed:
+
+```bash
+git tag stage-1
+git push origin stage-1
+```
+
 ## Stack and why
 
 | Component | Choice | Rationale |
