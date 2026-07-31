@@ -1,5 +1,7 @@
 # Parking Reservation Chatbot
 
+[![CI](https://github.com/VladKovalskiy/parking-reservation-chatbot/actions/workflows/ci.yml/badge.svg)](https://github.com/VladKovalskiy/parking-reservation-chatbot/actions/workflows/ci.yml)
+
 A RAG chatbot for parking-space information and reservation, with a
 human-in-the-loop confirmation step before any booking is made. University
 course project, delivered in 4 stages.
