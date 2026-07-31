@@ -1,97 +1,158 @@
 # Parking Reservation Chatbot
 
-RAG-чатбот для інформування про паркінг та бронювання місць з human-in-the-loop
-підтвердженням. Навчальний проєкт, 4 стадії.
+A RAG chatbot for parking-space information and reservation, with a
+human-in-the-loop confirmation step before any booking is made. University
+course project, delivered in 4 stages.
 
-| Stage | Зміст | Статус |
-|-------|-------|--------|
-| 0 | Оточення, CI, скелет проєкту | ✅ |
-| 1 | RAG-система, векторна БД, guardrails, evaluation | 🚧 |
+| Stage | Content | Status |
+|-------|---------|--------|
+| 0 | Environment, CI, project skeleton | ✅ |
+| 1 | RAG pipeline, vector store, guardrails, evaluation | 🚧 |
 | 2 | — | ⬜ |
 | 3 | — | ⬜ |
 | 4 | — | ⬜ |
 
-## Стек і чому саме він
+## Stack and why
 
-| Компонент | Вибір | Обґрунтування |
-|-----------|-------|---------------|
-| LLM | Anthropic Claude | доступний API; Haiku для дешевих внутрішніх кроків, Sonnet для генерації |
-| Embeddings | `sentence-transformers` (multilingual-e5) | Anthropic не надає embeddings API; локальна модель працює офлайн, безкоштовно і дозволяє порівнювати моделі в evaluation |
-| Vector store | Milvus (Lite у dev, standalone у demo) | одна бібліотека `langchain-milvus` для обох режимів — розробка без Docker, демо з повноцінним сервером |
-| Dynamic data | PostgreSQL | наявність місць, години, ціни змінюються — це не задача для векторного пошуку |
-| Guardrails | Presidio | pre-trained NLP-моделі для виявлення PII |
-| Orchestration | LangGraph | потрібен для stateful-діалогу і human-in-the-loop на пізніших стадіях |
+| Component | Choice | Rationale |
+|-----------|--------|-----------|
+| LLM | Anthropic Claude | Haiku for cheap internal steps (routing, extraction, guardrails), Sonnet for generation |
+| Embeddings | `sentence-transformers` (multilingual-e5) | Anthropic has no embeddings API; a local model runs offline, is free, and lets the evaluation compare models |
+| Vector store | Milvus (Lite in dev/CI, standalone in demo) | one `langchain-milvus` library for both modes — local dev needs no Docker, the demo gets a full server |
+| Dynamic data | PostgreSQL | availability, hours, and prices change on their own schedule — not a job for vector search (see [`docs/sql-schema.md`](docs/sql-schema.md)) |
+| Guardrails | Presidio | pre-trained NLP models for PII detection |
+| Orchestration | LangGraph | needed for stateful dialogue and human-in-the-loop confirmation in later stages |
 
-## Швидкий старт
+## Setup
+
+Prerequisites:
+
+- [`uv`](https://docs.astral.sh/uv/) — installs and manages Python for you:
+  ```bash
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  ```
+  (`uv` will install Python 3.12 itself on first use — no separate Python setup needed.)
+- Docker + Docker Compose — **optional**, only needed for the standalone
+  Milvus demo mode. Local development and tests use Milvus Lite (a local
+  file) and don't need Docker at all.
+- If you're on Windows, work inside WSL2 and keep the repo on the Linux
+  filesystem (e.g. `~/dev/parking-bot`), **not** under `/mnt/c` — I/O on a
+  mounted Windows drive is slow and breaks file watchers.
+
+Steps:
 
 ```bash
-# 1. Залежності (uv встановлює Python 3.12 автоматично)
+# 1. Install dependencies (downloads Python 3.12 automatically if needed)
 make install
 
-# 2. Конфіг
-cp .env.example .env   # додати ANTHROPIC_API_KEY
+# 2. Configure environment
+cp .env.example .env
+# then edit .env and set ANTHROPIC_API_KEY to a real key
+# (not required for unit tests, only for the LLM smoke test and the chatbot itself)
 
-# 3. Pre-commit хуки
+# 3. Install pre-commit hooks
 make hooks
 
-# 4. Тести
+# 4. Verify the setup
 make test
 ```
 
-Docker потрібен лише для демо-режиму з повноцінним Milvus:
+If `make test` passes, the setup is complete — unit tests need no API key
+and no running services (see [Testing](#testing)).
+
+### Optional: Milvus standalone + PostgreSQL (demo mode)
 
 ```bash
-make up      # Milvus standalone + Postgres + Attu UI на localhost:8000
-# і в .env: MILVUS_URI=http://localhost:19530 (замість MILVUS_LITE_PATH)
+make up      # starts Milvus standalone, Postgres, and Attu (UI) on http://localhost:8000
 ```
 
-## Структура
+Then switch `.env` from Milvus Lite to standalone by setting:
+
+```
+MILVUS_URI=http://localhost:19530
+```
+
+(Leave `MILVUS_LITE_PATH` as-is — it's only used when `MILVUS_URI` is unset.
+See [Known traps](CLAUDE.md#known-traps) in `CLAUDE.md` for why these are two
+separate variables.) Stop the stack with `make down`.
+
+## Usage
+
+The project is at stage 1 (RAG pipeline) — there is no running chat
+interface yet (`api/` and `graph/` are scaffolding for later stages). What
+you can run today:
+
+- **Manual smoke checks** (`scripts/smoke_*.py`) — these hit live services
+  (cost tokens, download a model), so they are not pytest tests and never
+  run in CI:
+  ```bash
+  # Verifies ANTHROPIC_API_KEY reaches both configured models
+  uv run python scripts/smoke_anthropic.py
+
+  # Loads the embedding model, indexes 3 documents into Milvus, checks retrieval
+  uv run python scripts/smoke_embeddings.py
+  ```
+  `smoke_embeddings.py` downloads the `intfloat/multilingual-e5-base` model
+  (~1 GB) on first run, and connects to whichever Milvus target is
+  configured in `.env` — Lite by default, or standalone if `MILVUS_URI` is
+  set — with no code changes needed to switch between them.
+- **Unit tests** — see [Testing](#testing) below.
+
+## Structure
 
 ```
 src/parking_bot/
-├── config.py       # типізований конфіг, усі провайдери свапаються через env
-├── ingestion/      # завантаження і чанкінг документів
+├── config.py       # typed config; every provider swappable via env
+├── ingestion/      # document loading and chunking
 ├── retrieval/      # vector store, retriever
-├── llm/            # обгортки над LLM та embeddings + fake-реалізації для тестів
-├── guardrails/     # PII-фільтрація
-├── graph/          # LangGraph-стани (stage 2+)
-└── api/            # інтерфейс
+├── llm/            # chat + embeddings factories, plus fake backends for tests
+├── guardrails/     # PII filtering
+├── graph/          # LangGraph state (stage 2+)
+└── api/            # interface (stage 2+)
 data/
-├── static/         # документи для векторної БД
-└── eval/           # golden set для Recall@K / Precision
+├── static/         # documents for the vector store: general info, location,
+│                   # booking process, rules — see the static/dynamic split
+│                   # in docs/sql-schema.md
+└── eval/           # golden_set.jsonl — question → relevant-document pairs
 docs/
-└── sql-schema.md   # дизайн PostgreSQL-схеми для динамічних даних
+└── sql-schema.md   # PostgreSQL schema design for dynamic data
+scripts/            # manual smoke checks (not run in CI)
+tests/              # pytest unit tests (offline, no live services)
 ```
 
-## Тестування
+## Testing
 
-Юніт-тести не потребують ані API-ключів, ані запущених сервісів: `conftest.py`
-примусово перемикає конфіг на fake-embeddings та in-memory сховище. Тести, що
-вимагають реального Milvus чи Postgres, позначені маркером `integration` і в CI
-не запускаються.
+Unit tests need neither API keys nor running services: `tests/conftest.py`
+forces `EMBEDDING_PROVIDER=fake` and an in-memory-style Milvus Lite store
+(`MILVUS_LITE_PATH=:memory:`). Tests that require a real Milvus/Postgres or
+API access are marked `integration` and excluded from CI.
 
 ```bash
-make test       # без інтеграційних
-make test-all   # усі
+make test       # unit tests only (excludes the integration marker) — what CI runs
+make test-all   # everything, including integration tests
+make lint       # ruff check + format --check
+make fmt        # ruff format + check --fix — run before committing
 ```
+
+`mypy` also runs in CI (`uv run mypy src`) but is currently non-blocking.
 
 ## Evaluation
 
-`data/eval/golden_set.jsonl` — розмічені пари «питання → релевантні документи».
-Наповнюється паралельно з написанням документів у `data/static/`. Метрики
-(Recall@K, Precision@K, latency) рахуються скриптом `make eval` — з'явиться на
-stage 1.
+`data/eval/golden_set.jsonl` holds 28 hand-labeled question → relevant-document
+pairs against `data/static/`, written before any retrieval code so the set
+isn't fitted to what the system already does. Metrics (Recall@K, Precision@K,
+latency) will be computed by an evaluation script — not implemented yet.
 
 ## Dynamic data (PostgreSQL)
 
-Місця, тарифи, години роботи і бронювання — це не задача для RAG (див.
-[Стек](#стек-і-чому-саме-він)). Дизайн схеми, межа статичне/динамічне і
-обґрунтування ключових рішень (double-booking guard, price snapshot,
-availability як запит, а не таблиця) — у
-[`docs/sql-schema.md`](docs/sql-schema.md). Реалізація (моделі, міграції)
-з'явиться на пізнішому етапі stage 1.
+Spaces, tariffs, operating hours, and reservations are not a RAG problem
+(see [Stack](#stack-and-why)). The schema design, the static/dynamic
+boundary, and the reasoning behind key decisions (double-booking guard,
+price snapshotting, availability as a query rather than a table) are in
+[`docs/sql-schema.md`](docs/sql-schema.md). Implementation (models,
+migrations) comes later in stage 1.
 
 ## CI
 
-GitHub Actions на кожен push і PR: ruff (lint + format), mypy, pytest з покриттям.
-Секрети не потрібні.
+GitHub Actions runs on every push and PR: ruff (lint + format), mypy, and
+pytest with coverage. No secrets are required.
