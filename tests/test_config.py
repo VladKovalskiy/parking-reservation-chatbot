@@ -5,7 +5,7 @@ from parking_bot.llm.embeddings import FakeEmbeddings, build_embeddings
 def test_settings_read_environment_overrides(settings: Settings) -> None:
     """Config must come from the environment, never be hardcoded."""
     assert settings.embedding_provider == "fake"
-    assert settings.milvus_lite_path == ":memory:"
+    assert settings.milvus_lite_path.endswith("milvus_lite_test.db")
 
 
 def test_fake_embeddings_are_deterministic_and_correctly_sized() -> None:

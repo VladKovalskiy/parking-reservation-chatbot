@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -6,10 +7,10 @@ from parking_bot.config import Settings, get_settings
 
 
 @pytest.fixture(autouse=True)
-def _offline_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def _offline_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     """Force every test into an offline, key-free configuration."""
     monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
-    monkeypatch.setenv("MILVUS_LITE_PATH", ":memory:")
+    monkeypatch.setenv("MILVUS_LITE_PATH", str(tmp_path / "milvus_lite_test.db"))
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-not-used")
     get_settings.cache_clear()
     yield
