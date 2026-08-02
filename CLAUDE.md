@@ -97,6 +97,29 @@ make up / down  # docker compose: Milvus standalone + Postgres + Attu
   `MILVUS_LITE_PATH` instead; see ADR-002.
 - Files copied from Windows into WSL can carry `:Zone.Identifier` sidecar files
   and `777` permissions. Prefer creating/editing files directly in WSL.
+- **Presidio's default `AnalyzerEngine()` silently downloads `en_core_web_lg`
+  (~400 MB)** the first time it's used, because its bundled `conf/default.yaml`
+  hardcodes that model — regardless of what spaCy models are already
+  installed. `guardrails/pii.py` avoids this by building the NLP engine
+  explicitly (`NlpEngineProvider()` then overriding `.nlp_configuration["models"]`)
+  to point at the pinned, much smaller `en_core_web_sm` (see
+  `pyproject.toml`'s `en-core-web-sm` direct-URL dependency, which needed
+  `tool.hatch.metadata.allow-direct-references = true` to install). Building
+  the NLP config from scratch instead of overriding just `models` loses
+  `default.yaml`'s `labels_to_ignore` filter and causes false-positive PII
+  matches (e.g. "Reservations" tagged as `ORGANIZATION`) — always start from
+  the bundled default and only override the model.
+- **Presidio's `UkVehicleRegistrationRecognizer` (used for car-plate
+  detection) ships `enabled: false`** in Presidio's own default recognizer
+  list — it's opt-in even when using the `countries=["uk"]` filter on
+  `load_predefined_recognizers()`, since that filter only ever narrows
+  recognizers that are already enabled. Add it explicitly via
+  `registry.add_recognizer(UkVehicleRegistrationRecognizer())` instead.
+- **Presidio's `PhoneRecognizer` has a fixed base score of 0.4**, boosted to
+  ~0.75 only when a context word (e.g. "phone", "number") appears near the
+  match — a bare number with no such context stays at 0.4 and won't clear
+  `pii_score_threshold`'s default of 0.5. This is inherent to Presidio, not a
+  bug to "fix"; write PII test fixtures with realistic surrounding context.
 
 ## Structure
 

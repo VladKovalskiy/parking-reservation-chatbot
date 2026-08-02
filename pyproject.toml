@@ -25,6 +25,10 @@ dependencies = [
     # --- Guardrails / PII ---
     "presidio-analyzer",
     "presidio-anonymizer",
+    # spaCy NER model presidio-analyzer's default NlpEngineProvider loads for
+    # its NLP-based recognizers (PERSON, LOCATION, ...); pattern-based
+    # recognizers (email, phone, ...) don't need it, but PERSON does.
+    "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
     # --- App / config ---
     "pydantic-settings",
     "fastapi",
@@ -47,6 +51,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/parking_bot"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.ruff]
 line-length = 100
