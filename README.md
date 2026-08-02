@@ -108,6 +108,9 @@ you can run today:
 
   # Loads the embedding model, indexes 3 documents into Milvus, checks retrieval
   uv run python scripts/smoke_embeddings.py
+
+  # Ingests data/static/, asks a grounded question and an out-of-scope one
+  uv run python scripts/smoke_rag_chain.py
   ```
   `smoke_embeddings.py` downloads the `intfloat/multilingual-e5-base` model
   (~1 GB) on first run, and connects to whichever Milvus target is
@@ -123,6 +126,7 @@ src/parking_bot/
 ├── ingestion/      # document loading and chunking
 ├── retrieval/      # vector store, retriever
 ├── llm/            # chat + embeddings factories, plus fake backends for tests
+├── rag/            # grounded RAG chain: prompt + retrieval -> generation
 ├── guardrails/     # PII filtering
 ├── graph/          # LangGraph state (stage 2+)
 └── api/            # interface (stage 2+)

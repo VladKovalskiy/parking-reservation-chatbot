@@ -106,6 +106,7 @@ src/parking_bot/
 ├── ingestion/      document loading and chunking
 ├── retrieval/      vector store, retriever
 ├── llm/            chat + embeddings factories (+ fake backends for tests)
+├── rag/            grounded RAG chain: prompt + retrieval -> generation
 ├── guardrails/     PII filtering
 ├── graph/          LangGraph state (stage 2+)
 └── api/            interface
