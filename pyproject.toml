@@ -9,6 +9,7 @@ dependencies = [
     "langchain",
     "langchain-core",
     "langchain-community",
+    "langchain-text-splitters",
     "langgraph",
     # --- LLM provider ---
     "langchain-anthropic",
