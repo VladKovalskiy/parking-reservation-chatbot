@@ -23,3 +23,6 @@ lint:
 
 fmt:
 	uv run ruff format . && uv run ruff check --fix .
+
+eval:
+	uv run python -m parking_bot.eval.harness

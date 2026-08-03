@@ -128,6 +128,7 @@ src/parking_bot/
 ├── llm/            # chat + embeddings factories, plus fake backends for tests
 ├── rag/            # grounded RAG chain: prompt + retrieval -> generation
 ├── guardrails/     # PII filtering
+├── eval/           # Recall@K / Precision@K harness (make eval)
 ├── graph/          # LangGraph state (stage 2+)
 └── api/            # interface (stage 2+)
 data/
@@ -161,8 +162,34 @@ make fmt        # ruff format + check --fix — run before committing
 
 `data/eval/golden_set.jsonl` holds 28 hand-labeled question → relevant-document
 pairs against `data/static/`, written before any retrieval code so the set
-isn't fitted to what the system already does. Metrics (Recall@K, Precision@K,
-latency) will be computed by an evaluation script — not implemented yet.
+isn't fitted to what the system already does.
+
+```bash
+make eval
+```
+
+Re-ingests `data/static/` (using whichever embedding provider/model is
+configured in `.env`), runs every golden-set question through retrieval, and
+computes Recall@K and Precision@K at several cutoffs (default `k=1,3,5,10`).
+Writes `data/eval/report.json`, e.g.:
+
+```json
+{
+  "num_questions": 28,
+  "metrics": {
+    "1": {"recall_at_k": 0.84, "precision_at_k": 0.86},
+    "5": {"recall_at_k": 0.96, "precision_at_k": 0.20}
+  },
+  "embedding_provider": "local",
+  "embedding_model": "intfloat/multilingual-e5-base"
+}
+```
+
+Because embeddings/vector-store choice comes entirely from config (ADR-001/
+002/003), re-running the report against a different embedding model is a
+`.env` change, not a code change — this is what makes model comparison cheap.
+Pass `--k`, `--golden-set`, `--report`, or `--skip-ingest` to
+`uv run python -m parking_bot.eval.harness` to override the defaults.
 
 ## Dynamic data (PostgreSQL)
 

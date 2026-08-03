@@ -62,6 +62,7 @@ make test-all   # all tests
 make lint       # ruff check + format --check
 make fmt        # ruff format + check --fix   (run before committing)
 make up / down  # docker compose: Milvus standalone + Postgres + Attu
+make eval       # re-ingest data/static/, score Recall@K/Precision@K on the golden set
 ```
 
 ## Conventions
@@ -131,6 +132,7 @@ src/parking_bot/
 ├── llm/            chat + embeddings factories (+ fake backends for tests)
 ├── rag/            grounded RAG chain: prompt + retrieval -> generation
 ├── guardrails/     PII filtering
+├── eval/           Recall@K / Precision@K harness (make eval)
 ├── graph/          LangGraph state (stage 2+)
 └── api/            interface
 data/
