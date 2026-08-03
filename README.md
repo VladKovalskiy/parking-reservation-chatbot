@@ -126,7 +126,7 @@ src/parking_bot/
 ├── ingestion/      # document loading and chunking
 ├── retrieval/      # vector store, retriever
 ├── llm/            # chat + embeddings factories, plus fake backends for tests
-├── rag/            # grounded RAG chain: prompt + retrieval -> generation
+├── rag/            # grounded RAG chain + static/dynamic SQL-vs-RAG router
 ├── guardrails/     # PII filtering
 ├── eval/           # Recall@K / Precision@K harness (make eval)
 ├── db/             # SQLAlchemy models + init/seed for dynamic data (docs/sql-schema.md)
@@ -224,6 +224,18 @@ event — real on Postgres, silently absent on the SQLite used by
 `tests/test_db.py`'s offline CRUD tests. That one guard is covered
 separately by `tests/test_db_integration.py` (`@pytest.mark.integration`,
 needs `make up`).
+
+### Static/dynamic routing
+
+[`rag/router.py`](src/parking_bot/rag/router.py) is what actually enforces
+the static/dynamic split at answer time: `classify_question()` routes
+availability/price/hours-shaped questions to a SQL query (formatted
+directly into the answer — no LLM paraphrase of a price or a closing time,
+by design) and routes everything else to the grounded RAG chain. Routing is
+deterministic keyword matching, not an LLM call — see the module docstring
+for why that's consistent with how `guardrails/pii.py` and
+`booking/collector.py` made the same call for their own "cheap internal
+step."
 
 ## CI
 

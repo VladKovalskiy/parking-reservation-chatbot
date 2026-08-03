@@ -150,7 +150,7 @@ src/parking_bot/
 ├── ingestion/      document loading and chunking
 ├── retrieval/      vector store, retriever
 ├── llm/            chat + embeddings factories (+ fake backends for tests)
-├── rag/            grounded RAG chain: prompt + retrieval -> generation
+├── rag/            grounded RAG chain + static/dynamic SQL-vs-RAG router
 ├── guardrails/     PII filtering
 ├── eval/           Recall@K / Precision@K harness (make eval)
 ├── db/             SQLAlchemy models + init/seed for dynamic data (docs/sql-schema.md)
