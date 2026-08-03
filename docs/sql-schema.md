@@ -67,17 +67,20 @@ erDiagram
         bigint id PK
         text external_id
         text display_name
+        text first_name
+        text last_name
     }
     RESERVATIONS {
         bigint id PK
         bigint user_id FK
-        int space_id FK
-        int tariff_id FK
+        int space_id FK "nullable until matched"
+        int tariff_id FK "nullable until matched"
+        text license_plate
         timestamptz starts_at
         timestamptz ends_at
         text status
-        int price_cents
-        char3 currency
+        int price_cents "nullable until matched"
+        char3 currency "nullable until matched"
     }
 ```
 
@@ -166,6 +169,8 @@ CREATE TABLE users (
     id            BIGSERIAL PRIMARY KEY,
     external_id   TEXT NOT NULL UNIQUE,   -- chat/session identity from the bot channel
     display_name  TEXT,
+    first_name    TEXT,   -- collected by the booking intake flow (booking/collector.py)
+    last_name     TEXT,   -- collected by the booking intake flow
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
@@ -173,6 +178,8 @@ CREATE TABLE users (
 Included only so `reservations.user_id` has something to reference. Not a
 real auth system — `external_id` is whatever identity the chat channel
 provides. Full account/auth design is out of scope for this stage.
+`first_name`/`last_name` are nullable: most interactions (browsing static
+info) never touch them, only the booking flow fills them in.
 
 ### `reservations`
 
@@ -182,14 +189,15 @@ CREATE EXTENSION IF NOT EXISTS btree_gist;
 CREATE TABLE reservations (
     id              BIGSERIAL PRIMARY KEY,
     user_id         BIGINT NOT NULL REFERENCES users(id),
-    space_id        INTEGER NOT NULL REFERENCES spaces(id),
-    tariff_id       INTEGER REFERENCES tariffs(id),  -- which tariff produced the price, for audit
+    space_id        INTEGER REFERENCES spaces(id),      -- NULL until a space is matched (see 'draft' below)
+    tariff_id       INTEGER REFERENCES tariffs(id),      -- which tariff produced the price, for audit
+    license_plate   TEXT,                                -- collected by the booking intake flow
     starts_at       TIMESTAMPTZ NOT NULL,
     ends_at         TIMESTAMPTZ NOT NULL CHECK (ends_at > starts_at),
-    status          TEXT NOT NULL DEFAULT 'pending_confirmation'
-                    CHECK (status IN ('pending_confirmation', 'confirmed', 'cancelled', 'no_show', 'completed')),
-    price_cents     INTEGER NOT NULL CHECK (price_cents >= 0),  -- snapshot, not a live join to tariffs
-    currency        CHAR(3) NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'draft'
+                    CHECK (status IN ('draft', 'pending_confirmation', 'confirmed', 'cancelled', 'no_show', 'completed')),
+    price_cents     INTEGER CHECK (price_cents >= 0),    -- NULL until a tariff is matched; snapshot, not a live join
+    currency        CHAR(3),                              -- NULL until a tariff is matched
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     confirmed_at    TIMESTAMPTZ,
     cancelled_at    TIMESTAMPTZ,
@@ -200,6 +208,18 @@ CREATE TABLE reservations (
     ) WHERE (status IN ('pending_confirmation', 'confirmed'))
 );
 ```
+
+**`status = 'draft'`** is the row created by the interactive booking-intake
+flow ([`booking/collector.py`](../src/parking_bot/booking/collector.py)) once
+the user's name, license plate, and requested time period are all collected
+and validated — before a space or tariff has been matched to the request.
+That's why `space_id`/`tariff_id`/`price_cents`/`currency` are nullable: a
+draft holds `user_id`, `license_plate`, `starts_at`/`ends_at` only. A draft
+is never subject to the double-booking guard below (`space_id IS NULL`, and
+`'draft'` isn't in the guard's `WHERE` list), so collecting several drafts
+concurrently for the same time window can't collide — the guard only
+engages once a specific space is assigned and the row moves to
+`pending_confirmation`.
 
 Two decisions worth calling out:
 

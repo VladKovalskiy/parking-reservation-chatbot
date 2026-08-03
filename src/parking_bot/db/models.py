@@ -29,6 +29,7 @@ VEHICLE_TYPES = ("car", "motorcycle", "bicycle")
 DAY_TYPES = ("weekday", "weekend", "holiday")
 TARIFF_UNITS = ("hour", "day")
 RESERVATION_STATUSES = (
+    "draft",
     "pending_confirmation",
     "confirmed",
     "cancelled",
@@ -111,13 +112,21 @@ class OperatingHoursException(Base):
 
 
 class User(Base):
-    """Chat/session identity — not a real auth system (see docs/sql-schema.md)."""
+    """Chat/session identity — not a real auth system (see docs/sql-schema.md).
+
+    `first_name`/`last_name` are filled in by the booking intake flow
+    (`booking/collector.py`) the first time a chat session provides them;
+    nullable because plenty of interactions (browsing static info) never
+    need them.
+    """
 
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     external_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     display_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    first_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -126,13 +135,23 @@ class User(Base):
 
 
 class Reservation(Base):
-    """A booking.
+    """A booking, from initial draft through to completion.
 
-    The double-booking guard is a Postgres-only EXCLUDE constraint (see the
-    `event.listen(...)` calls below): it can't be expressed as a portable
-    SQLAlchemy `__table_args__` constraint, so this class only declares the
-    columns/CHECKs/FKs that work identically on SQLite (used by unit tests)
-    and Postgres; the EXCLUDE guard is layered on separately for Postgres.
+    `status='draft'` rows are created by the booking intake flow
+    (`booking/collector.py`) once the user, license plate, and time period
+    are all collected and validated, but *before* a space and tariff have
+    been matched — hence `space_id`/`tariff_id`/`price_cents`/`currency` are
+    nullable, unlike every later status where they're required. A draft is
+    never a target of the double-booking guard below (its `space_id` is
+    NULL and its status isn't in the guard's `WHERE` list), so it can't
+    collide with a real hold on a space.
+
+    The double-booking guard itself is a Postgres-only EXCLUDE constraint
+    (see the `event.listen(...)` calls below): it can't be expressed as a
+    portable SQLAlchemy `__table_args__` constraint, so this class only
+    declares the columns/CHECKs/FKs that work identically on SQLite (used by
+    unit tests) and Postgres; the EXCLUDE guard is layered on separately for
+    Postgres.
     """
 
     __tablename__ = "reservations"
@@ -144,20 +163,21 @@ class Reservation(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    space_id: Mapped[int] = mapped_column(ForeignKey("spaces.id"), nullable=False)
+    space_id: Mapped[int | None] = mapped_column(ForeignKey("spaces.id"), nullable=True)
     tariff_id: Mapped[int | None] = mapped_column(ForeignKey("tariffs.id"), nullable=True)
+    license_plate: Mapped[str | None] = mapped_column(String, nullable=True)
     starts_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ends_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    status: Mapped[str] = mapped_column(String, nullable=False, default="pending_confirmation")
-    price_cents: Mapped[int] = mapped_column(nullable=False)
-    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="draft")
+    price_cents: Mapped[int | None] = mapped_column(nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     confirmed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelled_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    space: Mapped["Space"] = relationship(back_populates="reservations")
+    space: Mapped["Space | None"] = relationship(back_populates="reservations")
     user: Mapped["User"] = relationship(back_populates="reservations")
     tariff: Mapped["Tariff | None"] = relationship(back_populates="reservations")
 

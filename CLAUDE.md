@@ -154,6 +154,7 @@ src/parking_bot/
 ├── guardrails/     PII filtering
 ├── eval/           Recall@K / Precision@K harness (make eval)
 ├── db/             SQLAlchemy models + init/seed for dynamic data (docs/sql-schema.md)
+├── booking/        interactive booking-field intake: validate, ask, persist a draft
 ├── graph/          LangGraph state (stage 2+)
 └── api/            interface
 data/
