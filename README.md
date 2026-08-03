@@ -137,7 +137,8 @@ data/
 │                   # in docs/sql-schema.md
 └── eval/           # golden_set.jsonl — question → relevant-document pairs
 docs/
-└── sql-schema.md   # PostgreSQL schema design for dynamic data
+├── sql-schema.md   # PostgreSQL schema design for dynamic data
+└── evaluation.md   # Recall@K/Precision@K/latency report, embedding model comparison
 scripts/            # manual smoke checks (not run in CI)
 tests/              # pytest unit tests (offline, no live services)
 ```
@@ -190,6 +191,11 @@ Because embeddings/vector-store choice comes entirely from config (ADR-001/
 `.env` change, not a code change — this is what makes model comparison cheap.
 Pass `--k`, `--golden-set`, `--report`, or `--skip-ingest` to
 `uv run python -m parking_bot.eval.harness` to override the defaults.
+
+See [`docs/evaluation.md`](docs/evaluation.md) for the full report: methodology,
+Recall@K/Precision@K and latency tables, and a `multilingual-e5-base` vs.
+`multilingual-e5-small` comparison that justifies ADR-001's choice of local,
+swappable embeddings.
 
 ## Dynamic data (PostgreSQL)
 

@@ -2,7 +2,7 @@ from langchain_core.documents import Document
 from langchain_milvus import Milvus
 
 from parking_bot.config import Settings
-from parking_bot.eval.harness import GoldenExample, load_golden_set, run_eval
+from parking_bot.eval.harness import GoldenExample, _latency_stats, load_golden_set, run_eval
 from parking_bot.llm.embeddings import build_embeddings
 
 DOCS = [
@@ -33,6 +33,7 @@ def test_run_eval_scores_a_perfect_match_as_one_across_all_ks(settings: Settings
     assert report["metrics"]["1"]["recall_at_k"] == 1.0
     assert report["metrics"]["1"]["precision_at_k"] == 1.0
     assert report["metrics"]["3"]["recall_at_k"] == 1.0
+    assert report["latency_ms"]["mean_ms"] >= 0.0
 
 
 def test_run_eval_averages_across_multiple_questions(settings: Settings) -> None:
@@ -61,3 +62,22 @@ def test_load_golden_set_parses_question_and_relevant_doc_ids(tmp_path) -> None:
     assert examples == [
         GoldenExample(question="Where is it?", relevant_doc_ids=["general.md#overview"])
     ]
+
+
+def test_latency_stats_computes_mean_and_percentiles_from_known_values() -> None:
+    stats = _latency_stats([10.0, 20.0, 30.0, 40.0, 50.0])
+
+    assert stats["mean_ms"] == 30.0
+    assert stats["min_ms"] == 10.0
+    assert stats["max_ms"] == 50.0
+    assert stats["p50_ms"] == 30.0
+
+
+def test_latency_stats_with_no_samples_is_all_zero() -> None:
+    assert _latency_stats([]) == {
+        "mean_ms": 0.0,
+        "p50_ms": 0.0,
+        "p95_ms": 0.0,
+        "min_ms": 0.0,
+        "max_ms": 0.0,
+    }

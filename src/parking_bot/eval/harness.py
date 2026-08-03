@@ -14,6 +14,7 @@ against a different embedding model is a config change, not a code change.
 import argparse
 import json
 import sys
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,6 +51,27 @@ def load_golden_set(path: Path) -> list[GoldenExample]:
     return examples
 
 
+def _percentile(values: list[float], pct: float) -> float:
+    """Nearest-rank percentile (pct in [0, 1]); 0.0 for an empty input."""
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    index = min(int(len(ordered) * pct), len(ordered) - 1)
+    return ordered[index]
+
+
+def _latency_stats(latencies_ms: list[float]) -> dict:
+    if not latencies_ms:
+        return {"mean_ms": 0.0, "p50_ms": 0.0, "p95_ms": 0.0, "min_ms": 0.0, "max_ms": 0.0}
+    return {
+        "mean_ms": mean(latencies_ms),
+        "p50_ms": _percentile(latencies_ms, 0.50),
+        "p95_ms": _percentile(latencies_ms, 0.95),
+        "min_ms": min(latencies_ms),
+        "max_ms": max(latencies_ms),
+    }
+
+
 def run_eval(
     golden_set: list[GoldenExample],
     *,
@@ -57,16 +79,25 @@ def run_eval(
     store=None,
     settings: Settings | None = None,
 ) -> dict:
-    """Retrieve for every question once (at max(ks)) and score at each k in ks."""
+    """Retrieve for every question once (at max(ks)) and score at each k in ks.
+
+    Latency is timed per question around that single `retrieve()` call (query
+    embedding + Milvus search), independent of k — slicing the returned list
+    to score smaller k values afterward doesn't cost another query.
+    """
     settings = settings or get_settings()
     store = store or build_vector_store(settings)
     max_k = max(ks)
 
     recalls: dict[int, list[float]] = {k: [] for k in ks}
     precisions: dict[int, list[float]] = {k: [] for k in ks}
+    latencies_ms: list[float] = []
 
     for example in golden_set:
+        start = time.perf_counter()
         chunks = retrieve(example.question, store=store, k=max_k, settings=settings)
+        latencies_ms.append((time.perf_counter() - start) * 1000)
+
         retrieved_doc_ids = [chunk.metadata["doc_id"] for chunk in chunks]
         for k in ks:
             recalls[k].append(recall_at_k(retrieved_doc_ids, example.relevant_doc_ids, k))
@@ -82,6 +113,7 @@ def run_eval(
             }
             for k in ks
         },
+        "latency_ms": _latency_stats(latencies_ms),
     }
 
 
@@ -123,6 +155,12 @@ def main() -> int:
     for k in args.k:
         m = report["metrics"][str(k)]
         print(f"  k={k:<3} recall@k={m['recall_at_k']:.3f}  precision@k={m['precision_at_k']:.3f}")
+
+    lat = report["latency_ms"]
+    print(
+        f"  latency  mean={lat['mean_ms']:.1f}ms  p50={lat['p50_ms']:.1f}ms  "
+        f"p95={lat['p95_ms']:.1f}ms"
+    )
 
     return 0
 

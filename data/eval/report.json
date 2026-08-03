@@ -24,6 +24,13 @@
       "precision_at_k": 0.10714285714285715
     }
   },
+  "latency_ms": {
+    "mean_ms": 59.51807935720613,
+    "p50_ms": 58.855500999925425,
+    "p95_ms": 66.96118699983344,
+    "min_ms": 53.40573600005882,
+    "max_ms": 74.47413500085531
+  },
   "embedding_provider": "local",
   "embedding_model": "intfloat/multilingual-e5-base"
 }
