@@ -129,6 +129,7 @@ src/parking_bot/
 ├── rag/            # grounded RAG chain: prompt + retrieval -> generation
 ├── guardrails/     # PII filtering
 ├── eval/           # Recall@K / Precision@K harness (make eval)
+├── db/             # SQLAlchemy models + init/seed for dynamic data (docs/sql-schema.md)
 ├── graph/          # LangGraph state (stage 2+)
 └── api/            # interface (stage 2+)
 data/
@@ -203,8 +204,25 @@ Spaces, tariffs, operating hours, and reservations are not a RAG problem
 (see [Stack](#stack-and-why)). The schema design, the static/dynamic
 boundary, and the reasoning behind key decisions (double-booking guard,
 price snapshotting, availability as a query rather than a table) are in
-[`docs/sql-schema.md`](docs/sql-schema.md). Implementation (models,
-migrations) comes later in stage 1.
+[`docs/sql-schema.md`](docs/sql-schema.md).
+
+```bash
+make up        # starts Postgres (+ Milvus standalone + Attu)
+make db-init   # creates the schema — src/parking_bot/db/init_db.py
+make db-seed   # init + loads demo spaces/tariffs/hours/a reservation
+```
+
+SQLAlchemy models live in [`src/parking_bot/db/models.py`](src/parking_bot/db/models.py),
+one per `docs/sql-schema.md` table. There is deliberately no `Availability`
+model — [`db/availability.py`](src/parking_bot/db/availability.py) answers
+"which spaces are free in this window" as a query instead, matching the
+design doc's reasoning. The `reservations` double-booking guard
+(`EXCLUDE USING gist`) is PostgreSQL-only and can't be expressed as a
+portable SQLAlchemy constraint, so it's attached via a dialect-scoped DDL
+event — real on Postgres, silently absent on the SQLite used by
+`tests/test_db.py`'s offline CRUD tests. That one guard is covered
+separately by `tests/test_db_integration.py` (`@pytest.mark.integration`,
+needs `make up`).
 
 ## CI
 

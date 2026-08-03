@@ -1,4 +1,4 @@
-.PHONY: install hooks up down test lint fmt eval
+.PHONY: install hooks up down test lint fmt eval db-init db-seed
 
 install:
 	uv sync --extra dev
@@ -26,3 +26,9 @@ fmt:
 
 eval:
 	uv run python -m parking_bot.eval.harness
+
+db-init:
+	uv run python -m parking_bot.db.init_db
+
+db-seed:
+	uv run python -m parking_bot.db.seed

@@ -63,6 +63,8 @@ make lint       # ruff check + format --check
 make fmt        # ruff format + check --fix   (run before committing)
 make up / down  # docker compose: Milvus standalone + Postgres + Attu
 make eval       # re-ingest data/static/, score Recall@K/Precision@K on the golden set
+make db-init    # create the Postgres schema (docs/sql-schema.md)
+make db-seed    # init + load demo spaces/tariffs/hours/reservation
 ```
 
 ## Conventions
@@ -121,6 +123,24 @@ make eval       # re-ingest data/static/, score Recall@K/Precision@K on the gold
   match — a bare number with no such context stays at 0.4 and won't clear
   `pii_score_threshold`'s default of 0.5. This is inherent to Presidio, not a
   bug to "fix"; write PII test fixtures with realistic surrounding context.
+- **`db/models.py` must be imported before `Base.metadata.create_all()`, or
+  it silently creates zero tables.** Declarative model classes only register
+  themselves on `Base.metadata` as a side effect of the module executing —
+  `db/init_db.py` imports `parking_bot.db.models` purely for that side
+  effect (`# noqa: F401`), not because it uses any name from it. Confirmed
+  live against Postgres: dropping that import made `init_db()` "succeed"
+  (no exception) while creating no tables at all. `db/seed.py` happens to
+  import `models` anyway (it uses `Space`, `Tariff`, ...), which is why this
+  only broke `init_db.py` run standalone.
+- **`sqlalchemy.dialects.postgresql.ExcludeConstraint` can't live in a
+  model's `__table_args__`** if that model also needs to be created on
+  SQLite (as `tests/test_db.py` does) — compiling it against the SQLite
+  dialect raises `UnsupportedCompilationError`, aborting `create_all()`
+  entirely. `db/models.py` instead attaches the `reservations` double-
+  booking guard as a raw-SQL `DDL(...)` on an `after_create` event scoped
+  with `.execute_if(dialect="postgresql")`, so SQLite silently skips it and
+  Postgres gets the real `EXCLUDE USING gist` constraint (verified against a
+  live `make up` Postgres — see `tests/test_db_integration.py`).
 
 ## Structure
 
@@ -133,6 +153,7 @@ src/parking_bot/
 ├── rag/            grounded RAG chain: prompt + retrieval -> generation
 ├── guardrails/     PII filtering
 ├── eval/           Recall@K / Precision@K harness (make eval)
+├── db/             SQLAlchemy models + init/seed for dynamic data (docs/sql-schema.md)
 ├── graph/          LangGraph state (stage 2+)
 └── api/            interface
 data/
