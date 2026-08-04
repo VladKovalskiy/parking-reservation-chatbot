@@ -142,26 +142,86 @@ MILVUS_URI=http://localhost:19530
 See [Known traps](CLAUDE.md#known-traps) in `CLAUDE.md` for why these are two
 separate variables.) Stop the stack with `make down`.
 
+## Try it yourself
+
+A step-by-step path from a finished [Setup](#setup) to actually chatting
+with the bot over HTTP — both the SQL side (prices/hours/availability,
+answered straight from Postgres) and the RAG side (everything else,
+answered from the vector store via Claude Sonnet 4.6).
+
+```bash
+# 1. Start Postgres (+ Milvus standalone + Attu, same compose file)
+make up
+
+# 2. Create the Postgres schema and load demo data: spaces, tariffs,
+#    operating hours, one seed reservation
+make db-init
+make db-seed
+
+# 3. Index data/static/ into Milvus (Lite by default, no extra setup —
+#    switch to standalone per "Optional" above if you want to browse the
+#    collection in Attu instead of just querying it)
+uv run python -m parking_bot.ingestion.pipeline
+
+# 4. Start the API. NOTE: Attu already holds port 8000 (see step 1), so
+#    the API needs a different one.
+uv run uvicorn parking_bot.api.app:app --reload --port 8080
+```
+
+With that running, ask it a dynamic question (Postgres, no LLM call) and a
+static one (retrieval + Claude Sonnet 4.6) — real output from this exact
+walkthrough:
+
+```bash
+curl -X POST http://127.0.0.1:8080/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message": "How much does parking cost?", "session_id": "demo"}'
+```
+```json
+{
+  "answer": "Current prices:\nBicycle (weekday): 0.00 USD/hour\nCar (weekday): 5.00 USD/hour\nCar (weekend): 3.00 USD/hour\nMotorcycle (weekday): 2.50 USD/hour",
+  "source": "sql",
+  "sources": ["postgres"]
+}
+```
+
+```bash
+curl -X POST http://127.0.0.1:8080/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message": "How do I make a reservation?", "session_id": "demo"}'
+```
+```json
+{
+  "answer": "To reserve a parking spot, tell me your desired date, arrival time, and expected duration. I'll check availability and propose a matching time slot — no spot is booked automatically, you confirm it first. (source: booking.md#how-to-reserve)",
+  "source": "rag",
+  "sources": ["booking.md#how-to-reserve", "..."]
+}
+```
+
+Prefer clicking over `curl`? Open <http://127.0.0.1:8080/docs> for FastAPI's
+interactive Swagger UI — expand `POST /chat`, "Try it out", fill in
+`message`/`session_id`, "Execute". <http://localhost:8000> (Attu) lets you
+browse the Milvus collection the same way, if you switched to standalone.
+
+Other things worth trying once this is running:
+
+- [Reservation intake](#reservation-intake) below — a separate,
+  already-working flow (not yet wired into `/chat`, see
+  [Architecture](#architecture)) for collecting a booking's name, plate, and
+  time period. `uv run python scripts/play_booking.py` is a REPL for it.
+- `make db-seed` again any time to reset the demo Postgres data back to a
+  known state.
+
+Done for now? `make down` stops everything from step 1.
+
 ## Usage
 
 `graph/` (stateful, multi-turn dialogue) is scaffolding for stage 2+, but a
-working chat interface already exists for stage 1's info/SQL-vs-RAG flow:
-
-```bash
-uv run uvicorn parking_bot.api.app:app --reload
-```
-
-```bash
-curl -X POST http://127.0.0.1:8000/chat \
-  -H 'Content-Type: application/json' \
-  -d '{"message": "How much does parking cost?", "session_id": "demo"}'
-# {"answer":"Current prices:\nCar (weekday): 5.00 USD/hour\n...","source":"sql","sources":["postgres"]}
-
-curl -X POST http://127.0.0.1:8000/chat \
-  -H 'Content-Type: application/json' \
-  -d '{"message": "How do I cancel a reservation?", "session_id": "demo"}'
-# {"answer":"...","source":"rag","sources":["booking.md#cancel"]}
-```
+working chat interface already exists for stage 1's info/SQL-vs-RAG flow —
+see [Try it yourself](#try-it-yourself) above to run it end to end. The
+short version: `uv run uvicorn parking_bot.api.app:app --reload` (pick a
+port that isn't held by Attu if `make up` is running), `POST /chat` with
+`{"message": ..., "session_id": ...}`.
 
 Every request goes through `rag.router.answer_dynamic_question()`: classify
 the *raw* question (SQL vs. RAG), then for the RAG branch only, mask PII in
@@ -171,7 +231,7 @@ deliberate, not an oversight — see the function's docstring and
 CLAUDE.md's Known traps for the live bug that taught us why. Needs Postgres
 running (`make up`; `/chat` opens a session per request via
 `api/dependencies.py`'s `get_db_session`) and `ANTHROPIC_API_KEY` set for
-questions that fall through to RAG. Interactive docs at `/docs`.
+questions that fall through to RAG.
 
 What else you can run:
 
