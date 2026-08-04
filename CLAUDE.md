@@ -123,6 +123,13 @@ make db-seed    # init + load demo spaces/tariffs/hours/reservation
   match — a bare number with no such context stays at 0.4 and won't clear
   `pii_score_threshold`'s default of 0.5. This is inherent to Presidio, not a
   bug to "fix"; write PII test fixtures with realistic surrounding context.
+- **Presidio's built-in `EMAIL_ADDRESS` recognizer doesn't match the
+  reserved `.example` TLD** (RFC 2606) used throughout this project's own
+  static docs (e.g. `support@centralparking.example` in `general.md`) — its
+  regex rejects TLDs that long. A PII test fixture built from that exact
+  address silently detects nothing. Use a realistic TLD (`.com`) in PII test
+  fixtures instead; confirmed via `detect_pii()` returning `[]` for the
+  `.example` address and a normal result for the same address with `.com`.
 - **`db/models.py` must be imported before `Base.metadata.create_all()`, or
   it silently creates zero tables.** Declarative model classes only register
   themselves on `Base.metadata` as a side effect of the module executing —
@@ -156,7 +163,7 @@ src/parking_bot/
 ├── db/             SQLAlchemy models + init/seed for dynamic data (docs/sql-schema.md)
 ├── booking/        interactive booking-field intake: validate, ask, persist a draft
 ├── graph/          LangGraph state (stage 2+)
-└── api/            interface
+└── api/            FastAPI chat interface: routing -> RAG/SQL (guardrails around the RAG leg) -> response
 data/
 ├── static/         documents for the vector store
 └── eval/           golden set for Recall@K / Precision

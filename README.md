@@ -95,9 +95,37 @@ separate variables.) Stop the stack with `make down`.
 
 ## Usage
 
-The project is at stage 1 (RAG pipeline) — there is no running chat
-interface yet (`api/` and `graph/` are scaffolding for later stages). What
-you can run today:
+The project is at stage 1 (RAG pipeline). `graph/` (stateful, multi-turn
+dialogue) is still scaffolding for stage 2+, but a working chat interface
+already exists:
+
+```bash
+uv run uvicorn parking_bot.api.app:app --reload
+```
+
+```bash
+curl -X POST http://127.0.0.1:8000/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message": "How much does parking cost?", "session_id": "demo"}'
+# {"answer":"Current prices:\nCar (weekday): 5.00 USD/hour\n...","source":"sql","sources":["postgres"]}
+
+curl -X POST http://127.0.0.1:8000/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message": "How do I cancel a reservation?", "session_id": "demo"}'
+# {"answer":"...","source":"rag","sources":["booking.md#cancel"]}
+```
+
+Every request goes through `rag.router.answer_dynamic_question()`: classify
+the *raw* question (SQL vs. RAG), then for the RAG branch only, mask PII in
+the question before building the prompt and mask PII in the answer after
+generation (`guardrails.pii.mask_pii()`). Classifying before masking is
+deliberate, not an oversight — see the function's docstring and
+CLAUDE.md's Known traps for the live bug that taught us why. Needs Postgres
+running (`make up`; `/chat` opens a session per request via
+`api/dependencies.py`'s `get_db_session`) and `ANTHROPIC_API_KEY` set for
+questions that fall through to RAG. Interactive docs at `/docs`.
+
+What else you can run:
 
 - **Manual smoke checks** (`scripts/smoke_*.py`) — these hit live services
   (cost tokens, download a model), so they are not pytest tests and never
@@ -132,7 +160,7 @@ src/parking_bot/
 ├── db/             # SQLAlchemy models + init/seed for dynamic data (docs/sql-schema.md)
 ├── booking/        # interactive booking-field intake: validate, ask, persist a draft
 ├── graph/          # LangGraph state (stage 2+)
-└── api/            # interface (stage 2+)
+└── api/            # FastAPI chat interface: routing -> RAG/SQL (guardrails around the RAG leg) -> response
 data/
 ├── static/         # documents for the vector store: general info, location,
 │                   # booking process, rules — see the static/dynamic split
