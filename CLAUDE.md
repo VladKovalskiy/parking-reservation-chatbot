@@ -204,6 +204,22 @@ make db-seed    # init + load demo spaces/tariffs/hours/reservation
   `_validate_datetime()` by attaching `tzinfo=UTC` to any offset-less
   parse instead of forcing users to always type a UTC suffix. Regression
   test: `test_collect_booking_input_accepts_a_datetime_without_a_utc_offset`.
+- **A period validation error must blame whichever of `starts_at`/`ends_at`
+  is actually invalid, not hardcode `ends_at`.** An earlier version of
+  `_validate_period()` always reported the error under `ends_at` and reset
+  only that field — for a `starts_at`-in-the-past error, that left the
+  actually-broken `starts_at` in place forever and looped on the `ends_at`
+  question with no way to fix it (confirmed live via
+  `scripts/play_booking.py`: typing a past start time, then any end time,
+  produced "start time can't be in the past" followed by an infinite
+  re-ask of the *end*-time question). `_validate_period()` now returns
+  `(field_to_blame, message)` and `collect_booking_input()` resets that
+  specific field. Note fixing `starts_at` alone can still surface a
+  *second*, legitimate error next turn if the old `ends_at` is now earlier
+  than the corrected `starts_at` — that's correct behavior (one more turn),
+  not the bug. Regression tests:
+  `test_collect_booking_input_rejects_a_start_time_in_the_past`,
+  `test_collect_booking_turn_recovers_from_a_past_start_time`.
 
 ## Structure
 

@@ -94,17 +94,25 @@ _VALIDATORS = {
 }
 
 
-def _validate_period(fields: BookingFields, *, now: dt.datetime) -> str | None:
-    """Error message for an invalid (now-complete) period, else None."""
+def _validate_period(fields: BookingFields, *, now: dt.datetime) -> tuple[str, str] | None:
+    """(field to blame, error message) for an invalid (now-complete) period, else None.
+
+    Which field gets blamed matters: it's the one `collect_booking_input`
+    resets to missing so its question is asked again. A start time in the
+    past is a `starts_at` problem — attributing it to `ends_at` (as an
+    earlier version did) reset the wrong field, leaving the invalid
+    `starts_at` in place forever and looping on the `ends_at` question with
+    no way to fix it (confirmed live via scripts/play_booking.py).
+    """
     if fields.starts_at is None or fields.ends_at is None:
         return None
     if fields.starts_at < now:
-        return "The start time can't be in the past."
+        return "starts_at", "The start time can't be in the past."
     duration = fields.ends_at - fields.starts_at
     if duration < MIN_DURATION:
-        return "Reservations must be at least 1 hour long."
+        return "ends_at", "Reservations must be at least 1 hour long."
     if duration > MAX_DURATION:
-        return "Reservations can't be longer than 14 days."
+        return "ends_at", "Reservations can't be longer than 14 days."
     return None
 
 
@@ -119,8 +127,9 @@ def collect_booking_input(
     An invalid update is rejected (the field keeps its previous value, if
     any) and reported in `errors`, rather than raising — a chat-style caller
     needs to keep going and re-ask, not crash. `errors` and `next_field` can
-    both be set at once: e.g. an invalid `ends_at` is cleared back to
-    missing so its question is asked again.
+    both be set at once: e.g. a period that fails validation clears
+    whichever of `starts_at`/`ends_at` is actually at fault (see
+    `_validate_period`) back to missing so its question is asked again.
     """
     now = now or dt.datetime.now(dt.UTC)
     fields = replace(fields)
@@ -136,8 +145,9 @@ def collect_booking_input(
 
     period_error = _validate_period(fields, now=now)
     if period_error:
-        errors["ends_at"] = period_error
-        fields.ends_at = None
+        field_to_reset, message = period_error
+        errors[field_to_reset] = message
+        setattr(fields, field_to_reset, None)
 
     next_field = next((name for name in FIELD_ORDER if getattr(fields, name) is None), None)
     is_complete = next_field is None and not errors

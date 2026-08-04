@@ -115,7 +115,51 @@ def test_collect_booking_input_rejects_a_start_time_in_the_past() -> None:
     result = collect_booking_input(BookingFields(), updates, now=NOW)
 
     assert result.is_complete is False
-    assert "past" in result.errors["ends_at"]
+    # Regression: the error and the reset field must both be `starts_at` —
+    # that's the actual problem, and an earlier version blamed `ends_at`
+    # instead, which left the invalid starts_at in place and looped forever
+    # re-asking for ends_at with no way to fix it (confirmed live).
+    assert result.next_field == "starts_at"
+    assert "past" in result.errors["starts_at"]
+    assert result.fields.starts_at is None
+    assert result.fields.ends_at == dt.datetime(2026, 1, 1, 12, 0, tzinfo=dt.UTC)
+
+
+def test_collect_booking_turn_recovers_from_a_past_start_time(db_session: Session) -> None:
+    """A user can actually fix a past `starts_at` on a later turn instead of
+    being stuck re-answering `ends_at` forever with no way to touch the
+    field that's actually wrong (the live-confirmed bug the previous test
+    guards the root cause of).
+
+    Fixing `starts_at` alone leaves the old `ends_at` in place, which is now
+    *also* invalid (earlier than the corrected start) — that's a legitimate
+    "must be at least 1 hour" error on `ends_at`, one more turn, not a loop.
+    """
+    step1 = collect_booking_turn(
+        db_session,
+        "chat-session-5",
+        BookingFields(),
+        {
+            **VALID_UPDATES,
+            "starts_at": "2026-01-01T09:00+00:00",
+            "ends_at": "2026-01-01T12:00+00:00",
+        },
+        now=NOW,
+    )
+    assert step1.next_field == "starts_at"
+
+    step2 = collect_booking_turn(
+        db_session, "chat-session-5", step1.fields, {"starts_at": "2026-02-10T09:00+00:00"}, now=NOW
+    )
+    assert step2.is_complete is False
+    assert step2.next_field == "ends_at"
+
+    step3 = collect_booking_turn(
+        db_session, "chat-session-5", step2.fields, {"ends_at": "2026-02-10T12:00+00:00"}, now=NOW
+    )
+
+    assert step3.is_complete is True
+    assert db_session.query(Reservation).count() == 1
 
 
 def test_collect_booking_input_accepts_a_datetime_without_a_utc_offset() -> None:
