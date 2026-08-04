@@ -27,6 +27,22 @@ def test_mask_pii_passes_through_clean_text_unchanged(settings: Settings) -> Non
     assert mask_pii(CLEAN_TEXT, settings=settings) == CLEAN_TEXT
 
 
+def test_mask_pii_does_not_touch_out_of_scope_entity_types(settings: Settings) -> None:
+    """Regression test: detection is scoped to PII_ENTITIES, not "whatever
+    Presidio's registry supports."
+
+    Left unscoped, DATE_TIME free-associates on totally benign text with no
+    PII at all — "today" alone scores 0.85 — which broke question routing
+    ("Working hours?" -> "<DATE_TIME>?", losing the word the classifier
+    keys on) and leaked the placeholder token into a normal chat reply
+    ("...help you with <DATE_TIME>?") before entities were scoped. Neither
+    text below contains PERSON/PHONE_NUMBER/EMAIL_ADDRESS/
+    UK_VEHICLE_REGISTRATION, so both must pass through unchanged.
+    """
+    assert mask_pii("Hello! How are u today?", settings=settings) == "Hello! How are u today?"
+    assert mask_pii("Working hours?", settings=settings) == "Working hours?"
+
+
 def test_pii_score_threshold_is_configurable(settings: Settings) -> None:
     lenient = settings.model_copy(update={"pii_score_threshold": 0.5})
     strict = settings.model_copy(update={"pii_score_threshold": 0.99})

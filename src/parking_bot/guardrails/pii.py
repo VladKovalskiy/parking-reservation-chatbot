@@ -17,6 +17,17 @@ recognizers needed:
   It ships `enabled: false` in Presidio's own default recognizer list (it's
   opt-in even within the `uk` country filter), so it's added explicitly
   here — still an English-language recognizer, not a custom one (ADR-005).
+
+Detection is scoped to exactly the four entity types this project actually
+needs (`PII_ENTITIES` below) via `analyze(entities=...)`, not "whatever the
+registry happens to support." Leaving it unscoped pulled in `DATE_TIME`
+(among others) as a live entity, and `DATE_TIME` free-associates on totally
+benign text with no PII in it at all — "today" alone scores 0.85. That
+caused two separate live bugs before entities were scoped: "Working hours?"
+got masked to "<DATE_TIME>?", losing the word `rag/router.py`'s classifier
+keys on and misrouting the question to RAG; and "How are u today?" came
+back from the LLM as "...help you with <DATE_TIME>?", leaking the
+placeholder token itself into a normal reply. See CLAUDE.md's Known traps.
 """
 
 from functools import lru_cache
@@ -31,6 +42,11 @@ from presidio_anonymizer import AnonymizerEngine
 from parking_bot.config import Settings, get_settings
 
 SPACY_MODEL = "en_core_web_sm"
+
+# Persons, phones, emails, car plates — see docs/evaluation.md-adjacent DOD
+# for guardrails. Nothing else (DATE_TIME, LOCATION, NRP, URL, CREDIT_CARD,
+# ...) is ever in scope, so it's never even asked for.
+PII_ENTITIES = ["PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS", "UK_VEHICLE_REGISTRATION"]
 
 
 @lru_cache
@@ -53,10 +69,13 @@ def _anonymizer() -> AnonymizerEngine:
 
 
 def detect_pii(text: str, *, settings: Settings | None = None) -> list[RecognizerResult]:
-    """Return the PII entities found in `text` scoring at or above the configured threshold."""
+    """Return PII entities (`PII_ENTITIES`) found in `text` scoring above the threshold."""
     settings = settings or get_settings()
     return _analyzer().analyze(
-        text=text, language="en", score_threshold=settings.pii_score_threshold
+        text=text,
+        language="en",
+        entities=PII_ENTITIES,
+        score_threshold=settings.pii_score_threshold,
     )
 
 

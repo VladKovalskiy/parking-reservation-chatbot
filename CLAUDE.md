@@ -130,9 +130,21 @@ make db-seed    # init + load demo spaces/tariffs/hours/reservation
   address silently detects nothing. Use a realistic TLD (`.com`) in PII test
   fixtures instead; confirmed via `detect_pii()` returning `[]` for the
   `.example` address and a normal result for the same address with `.com`.
+- **`guardrails/pii.py`'s `detect_pii()`/`mask_pii()` scope detection to
+  exactly `PII_ENTITIES` (`PERSON`, `PHONE_NUMBER`, `EMAIL_ADDRESS`,
+  `UK_VEHICLE_REGISTRATION`) via `analyze(entities=...)`, not "whatever the
+  registry happens to support."** Left unscoped, `DATE_TIME` was a live
+  entity and free-associates on totally benign text with zero PII in it —
+  "today" alone scores 0.85. That caused two separate live bugs before
+  entities were scoped down (both below); root-caused and fixed together,
+  regression test `test_mask_pii_does_not_touch_out_of_scope_entity_types`
+  (`tests/test_guardrails.py`).
 - **PII guardrails in `rag/router.py`'s `answer_dynamic_question()` run
   around the RAG branch only, and classification always sees the raw,
-  unmasked question.** Two live bugs led here, both since fixed:
+  unmasked question.** Two live bugs led here (both downstream of the
+  unscoped-`DATE_TIME` issue above, but this fix stands independently of
+  that one — scoping entities reduces false positives, it doesn't change
+  *where* masking should run):
   - *Masking before routing broke routing.* When masking used to run first
     (in `api/app.py`, before calling the router), "Working hours?" got
     NER-tagged as a single `DATE_TIME` span and masked to `"<DATE_TIME>?"`,
@@ -152,6 +164,13 @@ make db-seed    # init + load demo spaces/tariffs/hours/reservation
     retrieved document content) can plausibly carry PII through to the
     output, so only they get masked. Regression test:
     `test_chat_endpoint_does_not_mask_sql_answers` (`tests/test_api.py`).
+  - *A third symptom, fixed by entity scoping rather than a routing change:*
+    "Hello! How are u today?" — RAG-routed, so masking did run in the right
+    place — still came back corrupted, because the LLM's own reply echoed
+    the `<DATE_TIME>` placeholder verbatim ("...help you with
+    `<DATE_TIME>`?"). Unlike the two bugs above, there was no boundary to
+    move; "today" just isn't PII, so it should never have been masked in
+    the first place. Fixed by the entity-scoping bullet above.
   `api/app.py`'s `chat()` itself now does no PII handling at all — it's a
   thin HTTP wrapper around `answer_dynamic_question()`, which owns the
   whole guardrail boundary since it's the only place that knows which
