@@ -193,6 +193,17 @@ make db-seed    # init + load demo spaces/tariffs/hours/reservation
   with `.execute_if(dialect="postgresql")`, so SQLite silently skips it and
   Postgres gets the real `EXCLUDE USING gist` constraint (verified against a
   live `make up` Postgres — see `tests/test_db_integration.py`).
+- **`datetime.fromisoformat()` silently returns a *naive* datetime when the
+  input has no UTC offset** (e.g. a user typing `2026-03-01T09:00` instead
+  of `...+00:00`). `booking/collector.py`'s `_validate_period()` compares
+  the parsed value against a timezone-aware `now`, so a naive value raised
+  `TypeError: can't compare offset-naive and offset-aware datetimes` —
+  confirmed live via `scripts/play_booking.py` when answering the
+  start/end-time prompts without an offset (the example question text
+  itself, `2026-03-01T09:00`, doesn't have one!). Fixed in
+  `_validate_datetime()` by attaching `tzinfo=UTC` to any offset-less
+  parse instead of forcing users to always type a UTC suffix. Regression
+  test: `test_collect_booking_input_accepts_a_datetime_without_a_utc_offset`.
 
 ## Structure
 

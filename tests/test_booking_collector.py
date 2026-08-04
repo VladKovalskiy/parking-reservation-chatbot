@@ -118,6 +118,23 @@ def test_collect_booking_input_rejects_a_start_time_in_the_past() -> None:
     assert "past" in result.errors["ends_at"]
 
 
+def test_collect_booking_input_accepts_a_datetime_without_a_utc_offset() -> None:
+    """Regression test: `datetime.fromisoformat()` returns a naive datetime
+    when the input has no UTC offset (e.g. "2026-02-10T09:00" instead of
+    "...+00:00"), and comparing that against the timezone-aware `now` in
+    `_validate_period()` used to raise `TypeError: can't compare
+    offset-naive and offset-aware datetimes` — confirmed live via
+    scripts/play_booking.py when a user typed a plain "HH:MM" answer with
+    no offset. Offset-less input is now treated as UTC instead of crashing.
+    """
+    updates = {**VALID_UPDATES, "starts_at": "2026-02-10T09:00", "ends_at": "2026-02-10T12:00"}
+
+    result = collect_booking_input(BookingFields(), updates, now=NOW)
+
+    assert result.is_complete is True
+    assert result.fields.starts_at == dt.datetime(2026, 2, 10, 9, 0, tzinfo=dt.UTC)
+
+
 def test_collect_booking_turn_accumulates_across_multiple_calls(db_session: Session) -> None:
     step1 = collect_booking_turn(
         db_session, "chat-session-3", BookingFields(), {"first_name": "Jane"}, now=NOW

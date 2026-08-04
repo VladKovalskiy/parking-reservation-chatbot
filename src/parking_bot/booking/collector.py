@@ -71,9 +71,18 @@ def _validate_license_plate(raw: str) -> str:
 
 def _validate_datetime(raw: str) -> dt.datetime:
     try:
-        return dt.datetime.fromisoformat(raw.strip())
+        value = dt.datetime.fromisoformat(raw.strip())
     except ValueError as exc:
         raise ValueError("Please provide a date/time like 2026-03-01T09:00.") from exc
+    # fromisoformat() happily returns a naive datetime when the input has no
+    # UTC offset (e.g. "2026-03-01T09:00"); comparing that against the
+    # timezone-aware `now` in _validate_period() then raises TypeError
+    # ("can't compare offset-naive and offset-aware datetimes") — confirmed
+    # live via scripts/play_booking.py. Treat an offset-less input as UTC
+    # rather than forcing users to always type "+00:00".
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=dt.UTC)
+    return value
 
 
 _VALIDATORS = {
