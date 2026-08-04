@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from parking_bot.config import Settings, get_settings
 from parking_bot.db.availability import available_spaces
 from parking_bot.db.models import OperatingHours, OperatingHoursException, Tariff
+from parking_bot.guardrails.pii import mask_pii
 from parking_bot.rag.chain import answer_question as answer_from_rag
 
 SqlCategory = Literal["availability", "prices", "hours"]
@@ -166,14 +167,29 @@ def answer_dynamic_question(
 
     Extra keyword arguments (`chunks`, `store`, `k`) are forwarded to the RAG
     chain when the question routes there.
+
+    Classification runs on the raw, unmasked `question`: it's a purely local
+    keyword match with no network call and nothing logged, and masking
+    first actively breaks it — e.g. "Working hours?" gets NER-tagged as a
+    single DATE_TIME span and masked to "<DATE_TIME>?", losing the word
+    "hours" the classifier needs, and the question wrongly falls through to
+    RAG (confirmed live). PII masking is applied only around the RAG
+    branch — input right before the prompt is built, output right after
+    generation — since that's the only path where a) the text leaves the
+    process (to Anthropic) and b) the answer is LLM-generated free text
+    that could carry PII forward from a retrieved document. A SQL answer is
+    our own deterministic template over DB columns; masking it was tried
+    and reverted for the same reason (see CLAUDE.md's Known traps).
     """
     settings = settings or get_settings()
     decision = classify_question(question)
 
     if decision.destination == "rag":
-        rag_result = answer_from_rag(question, chat=chat, settings=settings, **rag_kwargs)
+        masked_question = mask_pii(question, settings=settings)
+        rag_result = answer_from_rag(masked_question, chat=chat, settings=settings, **rag_kwargs)
+        masked_answer = mask_pii(rag_result.answer, settings=settings)
         return RoutedAnswer(
-            answer=rag_result.answer,
+            answer=masked_answer,
             destination="rag",
             sql_category=None,
             sources=rag_result.sources,

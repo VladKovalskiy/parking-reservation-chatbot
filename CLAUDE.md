@@ -130,6 +130,32 @@ make db-seed    # init + load demo spaces/tariffs/hours/reservation
   address silently detects nothing. Use a realistic TLD (`.com`) in PII test
   fixtures instead; confirmed via `detect_pii()` returning `[]` for the
   `.example` address and a normal result for the same address with `.com`.
+- **PII guardrails in `rag/router.py`'s `answer_dynamic_question()` run
+  around the RAG branch only, and classification always sees the raw,
+  unmasked question.** Two live bugs led here, both since fixed:
+  - *Masking before routing broke routing.* When masking used to run first
+    (in `api/app.py`, before calling the router), "Working hours?" got
+    NER-tagged as a single `DATE_TIME` span and masked to `"<DATE_TIME>?"`,
+    losing the word "hours" `classify_question()` keys on — the question
+    wrongly fell through to RAG instead of SQL. Fix: `classify_question()`
+    always runs on the raw question; masking moved to inside the RAG branch
+    only, applied to the question right before the prompt is built and to
+    the answer right after generation. Regression test:
+    `test_answer_dynamic_question_classifies_the_raw_question_before_masking`.
+  - *Masking SQL answers corrupted them.* A SQL answer is our own
+    deterministic template over known-safe DB columns (`vehicle_type`,
+    `day_type`, ...) and never contains user-typed free text; masking it
+    anyway (tried first) corrupted real answers in a live run — with no
+    user-typed context to work with, Presidio's NER free-associates on
+    capitalized domain words instead: "Bicycle" tagged as `PERSON`,
+    "weekday" as `DATE_TIME`. Only RAG answers (LLM-generated from
+    retrieved document content) can plausibly carry PII through to the
+    output, so only they get masked. Regression test:
+    `test_chat_endpoint_does_not_mask_sql_answers` (`tests/test_api.py`).
+  `api/app.py`'s `chat()` itself now does no PII handling at all — it's a
+  thin HTTP wrapper around `answer_dynamic_question()`, which owns the
+  whole guardrail boundary since it's the only place that knows which
+  branch (SQL vs. RAG) is being taken.
 - **`db/models.py` must be imported before `Base.metadata.create_all()`, or
   it silently creates zero tables.** Declarative model classes only register
   themselves on `Base.metadata` as a side effect of the module executing —

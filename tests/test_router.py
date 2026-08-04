@@ -159,6 +159,28 @@ def test_answer_dynamic_question_routes_sql_category_without_touching_the_llm(
     assert chat.invoked_with is None
 
 
+def test_answer_dynamic_question_classifies_the_raw_question_before_masking(
+    db_session: Session,
+) -> None:
+    """Regression test: masking before classification breaks routing.
+
+    "Working hours?" gets NER-tagged as a single DATE_TIME span and masked
+    to "<DATE_TIME>?", losing the word "hours" the classifier keys on — the
+    question then wrongly falls through to RAG instead of SQL. Confirmed
+    live before this test was added; see CLAUDE.md's Known traps.
+    """
+    db_session.add(OperatingHours(day_of_week=2, opens_at=dt.time(6, 0), closes_at=dt.time(23, 0)))
+    db_session.commit()
+    chat = _MockChat()
+
+    result = answer_dynamic_question("Working hours?", db_session, chat=chat, now=NOW)
+
+    assert result.destination == "sql"
+    assert result.sql_category == "hours"
+    assert result.answer == "Today's hours are 06:00-23:00."
+    assert chat.invoked_with is None
+
+
 def test_answer_dynamic_question_falls_back_to_rag_for_non_dynamic_questions(
     db_session: Session,
 ) -> None:
@@ -184,3 +206,22 @@ def test_answer_dynamic_question_falls_back_to_rag_for_non_dynamic_questions(
     assert result.answer == mocked_answer
     assert result.sources == ["booking.md#cancel"]
     assert chat.invoked_with is not None
+
+
+def test_answer_dynamic_question_masks_pii_in_the_question_sent_to_the_llm(
+    db_session: Session,
+) -> None:
+    chat = _MockChat("I don't have information about that.")
+    chunks = [Document(page_content="...", metadata={"doc_id": "general.md#contact"})]
+
+    answer_dynamic_question(
+        "My phone number is (212) 555-0198, can you note that down?",
+        db_session,
+        chunks=chunks,
+        chat=chat,
+        now=NOW,
+    )
+
+    _system_message, human_message = chat.invoked_with
+    assert "(212) 555-0198" not in human_message.content
+    assert "<PHONE_NUMBER>" in human_message.content
