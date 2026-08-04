@@ -9,7 +9,7 @@ course project, delivered in 4 stages.
 | Stage | Content | Status |
 |-------|---------|--------|
 | 0 | Environment, CI, project skeleton | ✅ |
-| 1 | RAG pipeline, vector store, guardrails, evaluation | 🚧 |
+| 1 | RAG pipeline, vector store, static/dynamic split, guardrails, evaluation | ✅ |
 | 2 | — | ⬜ |
 | 3 | — | ⬜ |
 | 4 | — | ⬜ |
@@ -28,6 +28,55 @@ Tag a stage once it's done and pushed:
 git tag stage-1
 git push origin stage-1
 ```
+
+## Architecture
+
+```mermaid
+flowchart TD
+    U[User message] --> C{"rag.router.classify_question()\n(keyword match, no LLM)"}
+
+    C -- "availability / price / hours" --> SQL["Postgres query\n(db/availability.py, Tariff, OperatingHours)"]
+    SQL --> SQLA["Deterministic template\n(exact figures, no LLM paraphrase)"]
+
+    C -- everything else --> M1["mask_pii() — input"]
+    M1 --> R["retrieval.retriever.retrieve()\nMilvus top-K over data/static/"]
+    R --> P["rag.prompt.build_prompt()\n(grounded, cite-or-refuse system prompt)"]
+    P --> L["Claude Sonnet 4.6"]
+    L --> M2["mask_pii() — output"]
+
+    SQLA --> RESP["ChatResponse\n{answer, source, sources}"]
+    M2 --> RESP
+```
+
+A question is classified once, with **no LLM call**, into one of two paths:
+
+- **Dynamic (SQL)** — availability, prices, and operating hours change on
+  their own schedule and live in Postgres, never in the vector store (see
+  [Dynamic data](#dynamic-data-postgresql) below). The answer is a
+  deterministic string built from the query result — never an LLM
+  paraphrase of a price or a closing time, so the number in the answer is
+  always exactly the number in the database.
+- **Static (RAG)** — everything else (general info, location, booking
+  process, rules) is answered by retrieving the top-K chunks from Milvus and
+  generating a grounded answer with Claude Sonnet 4.6, refusing to answer
+  from outside the retrieved context (`rag/chain.py`, `rag/prompt.py`).
+
+PII guardrails (Microsoft Presidio) wrap only the RAG leg — masking the
+*classified* question before it reaches the prompt, and the generated
+answer before it reaches the user. Classification itself runs on the raw
+question and is never masked: it's a local keyword match with no network
+call, and masking first actively breaks it (see
+[`rag/router.py`](src/parking_bot/rag/router.py)'s docstring and
+[Known traps](CLAUDE.md#known-traps) for the live bug this fixed). A SQL
+answer is never masked either — it's our own template over known-safe DB
+columns, not user-typed free text.
+
+Reservation intake (collecting a user's name, license plate, and requested
+time period, with validation and clarifying follow-up questions) is a
+separate, already-implemented flow — see
+[Reservation intake](#reservation-intake) below — not yet wired into the
+`/chat` endpoint above; that wiring is stateful multi-turn dialogue, which
+belongs to `graph/` in stage 2.
 
 ## Stack and why
 
@@ -95,9 +144,8 @@ separate variables.) Stop the stack with `make down`.
 
 ## Usage
 
-The project is at stage 1 (RAG pipeline). `graph/` (stateful, multi-turn
-dialogue) is still scaffolding for stage 2+, but a working chat interface
-already exists:
+`graph/` (stateful, multi-turn dialogue) is scaffolding for stage 2+, but a
+working chat interface already exists for stage 1's info/SQL-vs-RAG flow:
 
 ```bash
 uv run uvicorn parking_bot.api.app:app --reload
@@ -127,9 +175,10 @@ questions that fall through to RAG. Interactive docs at `/docs`.
 
 What else you can run:
 
-- **Manual smoke checks** (`scripts/smoke_*.py`) — these hit live services
-  (cost tokens, download a model), so they are not pytest tests and never
-  run in CI:
+- **Manual smoke checks** (`scripts/smoke_*.py`) — manual inspection
+  scripts, not pytest tests, so they never run in CI. Most hit live services
+  (cost tokens, download a model); `smoke_chunker.py` is the exception and
+  runs fully offline:
   ```bash
   # Verifies ANTHROPIC_API_KEY reaches both configured models
   uv run python scripts/smoke_anthropic.py
@@ -139,12 +188,59 @@ What else you can run:
 
   # Ingests data/static/, asks a grounded question and an out-of-scope one
   uv run python scripts/smoke_rag_chain.py
+
+  # Offline: prints how data/static/*.md gets loaded and chunked
+  uv run python scripts/smoke_chunker.py
   ```
   `smoke_embeddings.py` downloads the `intfloat/multilingual-e5-base` model
   (~1 GB) on first run, and connects to whichever Milvus target is
   configured in `.env` — Lite by default, or standalone if `MILVUS_URI` is
   set — with no code changes needed to switch between them.
 - **Unit tests** — see [Testing](#testing) below.
+
+## Reservation intake
+
+The other half of stage 1's "interactive features" requirement — collecting
+a reservation, not just answering questions — is
+[`booking/collector.py`](src/parking_bot/booking/collector.py). It isn't
+wired into the `/chat` endpoint yet (that needs stateful multi-turn dialogue
+— tracking which field was last asked for across HTTP requests — which is
+what `graph/` is for in stage 2); today it's a tested, standalone
+Python API:
+
+```python
+from parking_bot.booking.collector import BookingFields, collect_booking_turn
+from parking_bot.db.base import build_engine, build_session_factory
+
+session = build_session_factory(build_engine())()
+fields = BookingFields()
+
+result = collect_booking_turn(session, "chat-session-1", fields, {"first_name": "John"})
+print(result.question)  # "What's your last name?" — next field, no LLM involved
+
+result = collect_booking_turn(
+    session,
+    "chat-session-1",
+    result.fields,
+    {
+        "last_name": "Smith",
+        "license_plate": "AB12 CDE",
+        "starts_at": "2027-03-01T09:00+00:00",
+        "ends_at": "2027-03-01T12:00+00:00",
+    },  # any future date
+)
+print(result.is_complete)  # True — a Reservation(status="draft") is now in Postgres
+```
+
+Each call merges new field values into the running `BookingFields`,
+validates them (name format, license-plate pattern, and the period against
+`rules.md#time-limits`'s 1-hour-to-14-day window — no LLM, same reasoning as
+the router's keyword classification: this is a narrow, rule-shaped problem
+a model call would only make slower and less predictable), and either asks
+for the next missing/invalid field or persists a `status='draft'` row (see
+[Dynamic data](#dynamic-data-postgresql)) once everything checks out. No
+space or tariff is matched yet at that point — that's a further step, not
+yet implemented, that would move the row to `pending_confirmation`.
 
 ## Structure
 
